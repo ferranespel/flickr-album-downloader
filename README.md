@@ -21,7 +21,7 @@ A robust Python script to download all your Flickr photos and videos in their or
 
 1. Clone this repository:
 ```bash
-git clone https://github.com/ferranespel/flickr-downloader.git
+git clone https://github.com/ferranespel/flickr-album-downloader.git
 cd flickr-downloader
 ```
 
