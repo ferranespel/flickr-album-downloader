@@ -19,6 +19,10 @@ USER_ID = os.getenv("FLICKR_USER_ID")
 BASE_DIR = os.getenv("BASE_DIR")
 LOG_FILE = os.path.join(BASE_DIR, os.getenv("LOG_FILE"))
 PROGRESS_FILE = os.path.join(BASE_DIR, os.getenv("PROGRESS_FILE"))
+ERRORS_FILE = os.path.join(BASE_DIR, "download_errors.json")
+
+# Specific album mode (optional - leave empty to download all albums)
+SPECIFIC_ALBUM = os.getenv("SPECIFIC_ALBUM", "")  # e.g., "Julio 2013"
 
 # Rate limiting configuration
 DELAY_BETWEEN_DOWNLOADS = 0.8  # seconds between downloads (more aggressive)

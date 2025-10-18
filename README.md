@@ -8,6 +8,8 @@ A robust Python script to download all your Flickr photos and videos in their or
 - **Video Support**: Downloads videos in the highest available quality
 - **Smart Rate Limiting**: Adaptive delays to respect Flickr's API limits
 - **Auto-Resume**: Continues from the last completed album if interrupted
+- **Specific Album Mode**: Download only one specific album
+- **Error Reporting**: Generates detailed JSON report of failed downloads
 - **Progress Tracking**: Saves progress after each album completion
 - **Exponential Backoff**: Automatically handles rate limit errors (429) with intelligent retry logic
 - **Detailed Logging**: Comprehensive logs for monitoring and debugging
@@ -55,11 +57,28 @@ To find your User ID:
 
 ## 💻 Usage
 
-### Basic Usage
+### Basic Usage (Download All Albums)
 
 ```bash
 python3 flickr_downloader.py
 ```
+
+### Download a Specific Album
+
+Add to your `.env` file:
+```env
+SPECIFIC_ALBUM=Julio 2013
+```
+
+Or set it temporarily:
+```bash
+SPECIFIC_ALBUM="Julio 2013" python3 flickr_downloader.py
+```
+
+This is useful for:
+- Re-downloading albums with errors
+- Testing the script with a small album
+- Updating a specific album without processing all
 
 ### Prevent System Sleep (macOS)
 
@@ -115,7 +134,39 @@ BASE_DIR/
 ├── Album Name 2/
 │   └── ...
 ├── progress.json
+├── download_errors.json    # Generated if there are errors
 └── flickr_download.log
+```
+
+### Error Report (download_errors.json)
+
+After completion, check `download_errors.json` for details about failed downloads:
+
+```json
+{
+  "failed_photos": [
+    {
+      "album": "Julio 2013",
+      "photo_id": "123456789",
+      "available_sizes": ["Large", "Medium"]
+    }
+  ],
+  "failed_videos": [
+    {
+      "album": "Junio 2014",
+      "photo_id": "987654321",
+      "url": "https://...",
+      "label": "Site MP4"
+    }
+  ],
+  "no_url_videos": [
+    {
+      "album": "Noviembre 2012",
+      "photo_id": "555555555",
+      "available_sizes": ["Square", "Medium", "Original"]
+    }
+  ]
+}
 ```
 
 ## 🔍 Monitoring Progress
@@ -134,6 +185,124 @@ tail -f flickr_download.log
 ```bash
 grep "FAILED to download ORIGINAL" flickr_download.log
 ```
+
+## 🔄 Handling Download Errors
+
+After a complete download run, the script generates a detailed error report that helps you identify and retry failed downloads.
+
+### Understanding the Error Report
+
+The script creates `download_errors.json` with three categories of errors:
+
+#### 1. **Failed Photos** (`failed_photos`)
+Photos that couldn't be downloaded in any available size.
+```json
+{
+  "album": "Julio 2013",
+  "photo_id": "123456789",
+  "available_sizes": ["Large", "Medium"]
+}
+```
+**Reason**: Usually connectivity issues or corrupted files on Flickr's servers.
+
+#### 2. **Failed Videos** (`failed_videos`)
+Videos that returned 404 errors (URL not found).
+```json
+{
+  "album": "Junio 2014",
+  "photo_id": "14727162752",
+  "url": "https://live.staticflickr.com/video/...",
+  "label": "Site MP4"
+}
+```
+**Reason**: Video URLs have expired or Flickr no longer hosts these videos. Common with older videos (2012-2014).
+
+#### 3. **Videos Without URL** (`no_url_videos`)
+Videos where Flickr's API doesn't provide a download URL.
+```json
+{
+  "album": "Noviembre 2012",
+  "photo_id": "9294494487",
+  "available_sizes": ["Square", "Medium", "Original"]
+}
+```
+**Reason**: Very old videos (typically pre-2013) where Flickr's API structure has changed.
+
+### Viewing the Error Report
+
+```bash
+# View the complete error report
+cat download_errors.json
+
+# Count errors by type
+cat download_errors.json | grep -c "failed_photos"
+cat download_errors.json | grep -c "failed_videos"
+cat download_errors.json | grep -c "no_url_videos"
+
+# Pretty print with Python
+python3 -m json.tool download_errors.json
+```
+
+### Retrying Failed Albums
+
+Use the **Specific Album Mode** to retry albums with errors:
+
+#### Step 1: Identify problematic albums
+```bash
+# Check which albums had errors
+cat download_errors.json | grep '"album"' | sort -u
+```
+
+#### Step 2: Set the album in `.env`
+```env
+SPECIFIC_ALBUM=Junio 2014
+```
+
+#### Step 3: Run the downloader
+```bash
+python3 flickr_downloader.py
+```
+
+#### Step 4: Repeat for other albums
+Update `SPECIFIC_ALBUM` in `.env` and run again for each album with errors.
+
+### Batch Retry Script
+
+If you have many albums with errors, create a simple retry script:
+
+```bash
+#!/bin/bash
+# retry_albums.sh
+
+albums=(
+    "Junio 2014"
+    "Febrero 2014"
+    "Diciembre 2013"
+    "Noviembre 2012"
+)
+
+for album in "${albums[@]}"; do
+    echo "Retrying album: $album"
+    SPECIFIC_ALBUM="$album" python3 flickr_downloader.py
+    sleep 10  # Wait between albums
+done
+```
+
+```bash
+chmod +x retry_albums.sh
+./retry_albums.sh
+```
+
+### When Videos Can't Be Downloaded
+
+Some videos (especially from 2012-2014) may be permanently unavailable:
+
+**Options:**
+1. **Accept the loss**: These videos may no longer exist on Flickr
+2. **Check Flickr directly**: Log into Flickr and try downloading manually
+3. **Contact Flickr Support**: Report missing videos if they should be available
+
+**Note**: The script has already tried multiple times with exponential backoff, so if a video failed, it's likely a permanent issue on Flickr's side.
 
 ## 🛠️ Troubleshooting
 
@@ -158,6 +327,36 @@ The script automatically:
 - Deletes 0-byte files
 - Retries the download
 - Falls back to smaller sizes if needed
+
+### Videos Not Found (404 Errors)
+
+Some old videos may return 404 errors because:
+- The video URL has expired
+- Flickr no longer hosts the video
+- The video was deleted
+
+**Solution**: Check `download_errors.json` to see which videos failed and try re-uploading them to Flickr or accept the loss.
+
+### Videos Without Download URL
+
+Very old videos (pre-2013) may not have a downloadable URL in Flickr's API. These will be logged in `download_errors.json` under `no_url_videos`.
+
+### Re-download Failed Items
+
+To retry failed albums:
+
+1. Check `download_errors.json` to see which albums had errors
+2. Set `SPECIFIC_ALBUM` in `.env` to that album name
+3. Run the script again
+
+```bash
+# In .env
+SPECIFIC_ALBUM=Julio 2013
+```
+
+```bash
+python3 flickr_downloader.py
+```
 
 ## 📝 Notes
 
